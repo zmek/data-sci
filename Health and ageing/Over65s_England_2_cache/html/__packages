@@ -1,0 +1,12 @@
+base
+reshape2
+data.table
+dplyr
+ggplot2
+tidyverse
+tibble
+tidyr
+readr
+purrr
+stringr
+forcats

@@ -1,0 +1,113 @@
+---
+title: "Analysis of over 65s in South East England"
+author: "Zella King"
+date: "1/9/2018"
+output: html_document
+---
+
+
+```{r setup, cache=TRUE, echo=FALSE}
+library(reshape2)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+```
+
+Manual processes:
+Go to POPPI website, log in with credentials, download the following for the desired region:
+- data for next five years
+- data projected to 2035
+Copy files to: 
+- poppi_next 5 yrs
+- poppi_to 2035
+
+I did this for the South East on 9.1.18
+
+
+```{r, echo=FALSE, cache=TRUE}
+popnext5<-read.csv("~/Google Drive/Datasets/POPPI/poppi_next 5 yrs.csv", stringsAsFactors = FALSE, skip = 3)
+colnames(popnext5)<-c("description","y2017","y2018","y2019","y2020","y2021")
+
+popto2035<-read.csv("~/Google Drive/Datasets/POPPI/poppi_to 2035.csv", stringsAsFactors = FALSE, skip = 3)
+colnames(popto2035)<-c("description","y2017","y2020","y2025","y2030","y2035")
+
+rows<-nrow(popnext5)-4
+popnext5<-popnext5[1:rows,]
+popto2035<-popto2035[1:rows,]
+pop<-merge(popnext5,popto2035,by = c("description","y2017","y2020"))
+rm(popnext5); rm(popto2035)
+
+#parse the description into separate fields
+a<-strsplit(pop$description,":")
+b<-matrix(data = unlist(a),ncol = 2, byrow = TRUE); rm(a)
+b<-as.data.frame(b)
+
+#make data table with desired fields
+pop<-data.table(pop,district = b$V1,age=b$V2); rm(b)
+pop<-pop[,y2017:age]
+
+#remove commas in numeric fields
+pop$y2017<-as.numeric(gsub(",", "", pop$y2017))
+pop$y2018<-as.numeric(gsub(",", "", pop$y2018))
+pop$y2019<-as.numeric(gsub(",", "", pop$y2019))
+pop$y2020<-as.numeric(gsub(",", "", pop$y2020))
+pop$y2021<-as.numeric(gsub(",", "", pop$y2021))
+pop$y2025<-as.numeric(gsub(",", "", pop$y2025))
+pop$y2030<-as.numeric(gsub(",", "", pop$y2030))
+pop$y2035<-as.numeric(gsub(",", "", pop$y2035))
+
+#calculate CAGR - note - hardcoding the year interval
+pop$cagr2035<-(pop$y2035/pop$y2017)^(1/18)-1
+pop$cagr2025<-(pop$y2025/pop$y2017)^(1/8)-1
+
+#make a version with only the total numbers
+pop_onlytot<-pop[,temp:=grepl("Total",pop$age)]
+pop_onlytot<-pop_onlytot[ temp==1]
+pop_onlytot<-pop_onlytot[,y2017:cagr2025]
+pop_onlytot<-pop_onlytot[ district!="South East"]
+
+#make long thin dataset
+poplong<-d<-melt(pop, id.vars = c("district","age"), measure.vars = c("y2017","y2018","y2019","y2020","y2021","y2025","y2030","y2035"))
+colnames(poplong)<-c("district","age","year","pop")
+poplong$year<-as.numeric(gsub("y", "", poplong$year))
+
+#make another version without totals for each age category or South East
+poplong_notot<-poplong[,temp:=grepl("Total",poplong$age)]
+poplong_notot<-poplong_notot[ temp!=1]
+poplong_notot<-poplong_notot[,district:pop]
+poplong_notot<-poplong_notot[ district!="South East"]
+poplong_notot_next5<-poplong_notot[ year < 2025]
+```
+
+Plot showing growth rates for each local authority
+```{r, echo=FALSE, cache=TRUE}
+plot <- ggplot(nototnext5,aes(x=year,y=pop, colour = age))
+plot + geom_line() + facet_wrap(~ district, dir="v")
+```
+
+Circular plot showing CAGR
+```{r, echo=FALSE, cache=TRUE}
+# Create dataset for circular plot
+d<-pop_onlytot
+data=data.frame(
+        id<-seq(1,19),
+        district<-d$district,
+        cagr2035<-d$cagr2035/max(d$cagr2035)*100)
+colnames(data)<-c("id","district","cagr2035")
+
+
+label_data=data
+number_of_bar=nrow(label_data)
+angle= 90 - 360 * (label_data$id-0.5) /number_of_bar    
+label_data$hjust<-ifelse( angle < -90, 1, 0)
+label_data$angle<-ifelse(angle < -90, angle+180, angle)
+
+p = ggplot(data, aes(x=as.factor(id), y=cagr2035)) + geom_bar(stat="identity", fill=alpha("skyblue", 0.7)) + ylim(-100,200) + 
+        theme_minimal() +
+        theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), plot.margin = unit(rep(-1,4), "cm")) +
+        coord_polar(start = 0) +
+        geom_text(data=label_data, aes(x=id, y=cagr2035+10, label=district, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
+p
+```
+

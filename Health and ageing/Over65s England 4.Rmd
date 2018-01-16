@@ -1,0 +1,343 @@
+---
+title: "Analysis of over 65s in South East England"
+author: "Zella King"
+date: "1/9/2018"
+output: html_document
+---
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE, fig.path='Figs/')
+#fig.path='Figs/' makes it so the figure files get placed in the Figs subdirectory
+```
+
+```{r setup, cache=TRUE, echo=FALSE, warning=FALSE, message=FALSE}
+library(reshape2)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+#install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+library(tidyverse)
+library(gridExtra)
+```
+
+
+##Aims of this report 
+
+This report focuses on how the population of older people, and their care needs, are expected to change over the 18 years. Britain has an ageing population, with higher levels of disease and longer periods of dependence towards end of life. It has been estimated that by 2025 there will be an additional 353K older people with substantial care needs.  
+
+In this report we examine population changes at a very local level. We set out to identify which areas of the South East of England will experience the greatest demand for the delivery of care in the home. Since care at home is a very localised service to deliver, with agencies and staff limited in the distances they can cover, we wanted to see which geographical areas would have the highest need. Our intention is to help service providers interested in delivering care at home identify where the opportunity is greatest. 
+
+This is an exploratory report, testing a data methodology, so it focuses on the South East of England only. However, the methodology is easily scalable to other regions. It can easily be extended to encompass more specific information, such as projections by gender, ethnic group, household composition, health needs. 
+
+The data shown here could also be combined with other publicly available data such as on the wealth or education level of each district, immigration levels, or workforce data. 
+
+##About the data used in this report
+
+The data used in this report are taken from the Projecting Older People Population Information System (POPPI) database. Originally developed for the Department of Health, this provides population data by age band, gender, ethnic group, and tenure, for English local authorities.
+
+POPPI estimates projected numbers of older people by: those living alone, living in care home, provision of unpaid care, their ability to carry out domestic tasks and self care.
+
+Prevalence rates from research are used to estimate the numbers of people suffering from: limiting long term illness, depression, severe depression, dementia, heart attack, stroke, bronchitis, emphysema, falls, continence, visual impairment, hearing impairment, mobility, obesity, diabetes and learning disabilities including Down's syndrome and autistic spectrum disorders (ASD).
+
+Anyone with an academic affiliation can access the POPPI data.
+
+More information on POPPI can be found at: http://www.poppi.org.uk/
+
+##How the data were accessed
+
+Data were downloaded for the South East of England, and all the authorities within that region, by district. For each district, the following data were accessed:
+
+* Population aged 65 and over, by age, for 2017, 2018, 2019, 2020, 2021, 2025, 2030 and 2035  
+* People aged 65 and over with a limiting long-term illness, by age, projected for the same years as above  
+
+There is variation between counties in the South East in terms of how they are organised. Some local authorities cover a whole county (e.g. Oxfordshire, Surrey) while other counties (e.g. Berkshire) have been divided into unitary authorities (e.g. Reading). The county level data needd to be broken down into smaller units in order for it to be comparable with unitary authority level data.
+
+To achieve this, multiple downloads from POPPI were conducted at different levels of analysis:
+
+1. South East of England level and the authorities within the South East (some of these are county level, others are district/unitary authority)  
+1. For local authorities that cover a whole county, data at the district level was also downloaded  
+
+
+```{r, echo=FALSE, cache=TRUE}
+
+#get names all downloaded files
+filenames<-list.files(path="~/Google Drive/Datasets/POPPI downloads 180115", full.names = TRUE)
+
+#read all downloaded files into two dataframes
+popnext5<-data.frame()
+popto2035<-data.frame()
+for (i in 1:length(filenames)) {
+        a<-read.csv(filenames[i],stringsAsFactors = FALSE, skip = 3)
+        a<-head(a, -4) #remove last four rows 
+        if(names(a[3])=="X2018") {
+                popnext5<-rbind(popnext5,a)  
+        }
+        else {
+                popto2035<-rbind(popto2035,a)
+        }
+        
+}
+
+colnames(popnext5)<-c("description","y2017","y2018","y2019","y2020","y2021")
+colnames(popto2035)<-c("description","y2017","y2020","y2025","y2030","y2035")
+
+#remove duplicated rows and merge the two datasets
+popnext5<-popnext5[!duplicated(popnext5),]
+popto2035<-popto2035[!duplicated(popto2035),]
+pop<-merge(popnext5,popto2035,by = c("description","y2017","y2020"))
+rm(popnext5); rm(popto2035)
+
+#parse the description into separate fields
+a<-strsplit(pop$description,":")
+b<-matrix(data = unlist(a),ncol = 2, byrow = TRUE); rm(a)
+b<-as.data.frame(b)
+
+#make data table with desired fields
+pop<-data.table(pop,district = b$V1,age=b$V2); rm(b)
+pop<-pop[,y2017:age]
+
+#remove commas in numeric fields
+pop$y2017<-as.numeric(gsub(",", "", pop$y2017))
+pop$y2018<-as.numeric(gsub(",", "", pop$y2018))
+pop$y2019<-as.numeric(gsub(",", "", pop$y2019))
+pop$y2020<-as.numeric(gsub(",", "", pop$y2020))
+pop$y2021<-as.numeric(gsub(",", "", pop$y2021))
+pop$y2025<-as.numeric(gsub(",", "", pop$y2025))
+pop$y2030<-as.numeric(gsub(",", "", pop$y2030))
+pop$y2035<-as.numeric(gsub(",", "", pop$y2035))
+
+#calculate CAGR - note - hardcoding the year interval
+pop$cagr2035<-(pop$y2035/pop$y2017)^(1/18)-1
+pop$cagr2025<-(pop$y2025/pop$y2017)^(1/8)-1
+
+#identify the county level categories
+a<-strsplit(filenames,"15-01-18_")
+b<-matrix(data = unlist(a),ncol = 2, byrow = TRUE)
+c<-strsplit(b[,2],"_and")
+d<-matrix(data = unlist(c),ncol = 2, byrow = TRUE)
+county_names<-unique(d[,1])
+county_names<-sub("_"," ", county_names)
+pop<-pop[,county_level:=pop$district %in% county_names]
+
+#identify the total categories
+pop<-pop[,categ_total:=grepl("Total",pop$age)]
+```
+
+##Projected growth in population
+
+###Growth
+The following chart shows the growth in older people in the South East as a whole. Between now and 2035, the number of over 65s is projected to increase by `r 2583-1747` thousand, or `r (2.58-1.75)/1.75`%.
+
+```{r growth}
+a<-pop[ categ_total == 1 & district=="South East"]
+a<-a[,y2017:y2035]
+names(a)<-(gsub("y", "", names(a))) #remove y from col names to make plot easier
+b<-data.frame(year = as.numeric((names(a))), pop = round((as.numeric(a[1,]))/1000000,2))
+
+#print plot to tiff file
+tiff('SEgrowth.tiff', units="in", width=8, height=3, res=100, compression = 'lzw')
+p<-ggplot(data=b, aes(x=year, y=pop)) +
+        geom_bar(stat="identity", fill=alpha("skyblue", 0.7), width = .7) + 
+        labs(title="Growth in number of people over 65 in the South East", x="Year", y = "Population (millions)") +
+       geom_text(aes(label=pop), vjust=1.6, size=3) +
+        theme_minimal() 
+p
+dev.off()
+```
+
+
+The following chart shows the growth in older people in the South East in each age category.
+
+```{r growth_by_age}
+#make long thin dataset - note this includes county level and a summary for the South East
+poplong<-melt(pop, id.vars = c("district","age","county_level", "categ_total"), measure.vars = c("y2017","y2018","y2019","y2020","y2021","y2025","y2030","y2035"))
+colnames(poplong)<-c("district","age","county_level","categ_total", "year","pop")
+poplong$year<-as.numeric(gsub("y", "", poplong$year)) #remove y from col names to make plot easier
+
+#make another version without totals for each age category or South East
+poplong_notot<-poplong[ county_level!=1 & categ_total!=1]
+poplong_notot<-poplong_notot[, c("county_level","categ_total"):=NULL] #remove columns that are no longer needed
+
+#make dataset of population by age
+c<-data.frame(poplong_notot)
+c$pop<-c$pop/1000
+
+#print plot to tiff file
+tiff('SEgrowthbyage.tiff', units="in", width=8, height=3, res=100, compression = 'lzw')
+p<-ggplot(data=c, aes(x=year, y=pop, fill=age)) +
+        geom_bar(stat="identity",  width = .7) + 
+        labs(title="Growth in number of people over 65 in the South East, by age", x="Year", y = "Population (thousands)") +
+        theme_minimal()
+p
+dev.off()
+```
+###Growth rates
+The folllowing charts show the projected compound growth rates of each age category. 
+
+```{r cagr}
+d<-pop[ district=="South East"]
+d<-d[,age:cagr2025]
+d$cagr2025<-d$cagr2025*100
+d$cagr2035<-d$cagr2035*100
+label_text<-paste(round(d$cagr2025,2),"%", sep = "")
+label_text2<-paste(round(d$cagr2035,2),"%", sep = "")
+
+
+#print plot to tiff file
+tiff('SE_CAGR2025.tiff', units="in", width=4, height=6, res=100, compression = 'lzw')
+p<-ggplot(data=d, aes(x=age, y=cagr2025, fill = age)) +
+        geom_bar(stat="identity",  width = .5) + 
+        labs(title="CAGR to 2025 (%)", y = "CAGR (%)") +
+        theme_minimal() + theme(legend.position = "none") + 
+        geom_text(aes(label=label_text), hjust=1.2, size=3)
+p + coord_flip()
+dev.off()
+
+tiff('SE_CAGR2035.tiff', units="in", width=4, height=6, res=100, compression = 'lzw')
+p<-ggplot(data=d, aes(x=age, y=cagr2035, fill = age)) +
+        geom_bar(stat="identity",  width = .5) + 
+        labs(title="CAGR to 2035 (%)", y = "CAGR (%)") +
+        theme_minimal() + theme(legend.position = "none") + 
+        geom_text(aes(label=label_text2), hjust=1.2, size=3)
+
+p + coord_flip()
+dev.off()
+```
+
+##Compound annual growth in population over 65
+
+The chart below shows the compound annual growth rate (CAGR) between 2017 and 2035 of the total population over the age of 65 for all districts in the South East. Where data are available, it also shows the county level projections, and for the South East as a whole. 
+
+```{r circularCAGR2025}
+#make a version of the dataset with only the totals for each district
+pop_onlytot<-pop[ categ_total==1]
+pop_onlytot<-pop_onlytot[,y2017:county_level]
+
+# Create dataset for circular plot
+pop_onlytot<-pop_onlytot[order(-cagr2025)] #order by relevant field - do this every time
+
+
+plotdata=data.frame( 
+        id<-seq(1,75),
+        district<-pop_onlytot$district,
+        Level<-factor(as.numeric(pop_onlytot$county_level),levels=c(1,0), labels = c("County or region","District")),
+        cagr2025_orig<-pop_onlytot$cagr2025,      
+        cagr2025<-pop_onlytot$cagr2025/max(pop_onlytot$cagr2025)*100)
+colnames(plotdata)<-c("id","district","county_level","cagr2025_orig","cagr2025")
+
+#create dataset for labels
+label_data=plotdata[,1:2]
+number_of_bar=nrow(label_data)
+angle= 90 - 360 * (label_data$id-0.5) /number_of_bar    
+label_data$hjust<-ifelse( angle < -90, 1, 0)
+label_data$angle<-ifelse(angle < -90, angle+180, angle)
+
+#add CAGR labels to the label data
+label_data$district<-as.factor(paste(as.character(plotdata$district)," (",round(plotdata$cagr2025_orig*100,1),"%)",sep=""))
+
+#plot 
+p = ggplot(plotdata, aes(x=as.factor(id), y=cagr2025,fill=Level)) + geom_bar(stat="identity") + ylim(-100,200) + 
+        theme_minimal() +
+        theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), plot.margin = unit(rep(1,4), "cm")) +
+        coord_polar(start = 0) +
+        geom_text(data=label_data, aes(x=id, y=cagr2025+10, label=district, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
+p+labs(title = "Projected CAGR of populuation over 65, 2017-2025")
+```
+
+This chart shows the same data but now projecting the compound annual growth rate (CAGR) between 2017 and 2035. The districts are shown in the same order as the previous plot. 
+
+```{r circularCAGR2035}
+
+# Create dataset for circular plot
+pop_onlytot<-pop_onlytot[order(-cagr2035)] #order by relevant field - do this every time
+plotdata=data.frame( 
+        id<-seq(1,75),
+        district<-pop_onlytot$district,
+        Level<-factor(as.numeric(pop_onlytot$county_level),levels=c(1,0), labels = c("County or region","District")),
+        cagr2035_orig<-pop_onlytot$cagr2035,      
+        cagr2035<-pop_onlytot$cagr2035/max(pop_onlytot$cagr2035)*100)
+colnames(plotdata)<-c("id","district","county_level","cagr2035_orig","cagr2035")
+
+#add new CAGR labels to the label data
+label_data$district<-as.factor(paste(as.character(plotdata$district)," (",round(plotdata$cagr2035_orig*100,1),"%)",sep=""))
+
+p = ggplot(plotdata, aes(x=as.factor(id), y=cagr2035,fill=Level)) + geom_bar(stat="identity") + ylim(-100,200) + 
+        theme_minimal() +
+        theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), plot.margin = unit(rep(1,4), "cm")) +
+        coord_polar(start = 0) +
+        geom_text(data=label_data, aes(x=id, y=cagr2035+10, label=district, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
+p+labs(title = "Projected CAGR of populuation over 65, 2017-2035")
+```
+
+This chart shows the number of adults over 65 projected to live in each district in 2021. 
+
+```{r circularPopByDistrict}
+#take subset without county level data
+pop_onlytot_nocounty<-copy(pop_onlytot)
+pop_onlytot_nocounty<-pop_onlytot_nocounty[ county_level==0]
+
+#make dataset for plotting raw pop numbers
+pop_onlytot_nocounty<-pop_onlytot_nocounty[order(-y2021)] #order by relevant field - do this every time
+plotdata=data.frame( 
+        id<-seq(1,nrow(pop_onlytot_nocounty)),
+        district<-pop_onlytot_nocounty$district,
+        y2021_orig<-pop_onlytot_nocounty$y2021,      
+        y2021<-pop_onlytot_nocounty$y2021/max(pop_onlytot_nocounty$y2021)*100,
+        topten<-factor(c(rep(0,10),rep(1,nrow(pop_onlytot_nocounty)-10))))
+colnames(plotdata)<-c("id","district","y2021_orig","y2021","topten")
+
+#create dataset for labels
+label_data=plotdata[,1:2]
+number_of_bar=nrow(label_data)
+angle= 90 - 360 * (label_data$id-0.5) /number_of_bar    
+label_data$hjust<-ifelse( angle < -90, 1, 0)
+label_data$angle<-ifelse(angle < -90, angle+180, angle)
+
+#add new CAGR labels to the label data
+label_data$district<-as.factor(paste(as.character(plotdata$district)," (",round(plotdata$y2021_orig/1000,0),")",sep=""))
+
+#print to tiff file
+tiff('District_poptotals.tiff', units="in", width=5, height=5, res=100, compression = 'lzw')
+p = ggplot(plotdata, aes(x=as.factor(id), y=y2021, fill = topten)) +                                         geom_bar(stat="identity") + ylim(-100,200) + 
+        theme_minimal() +
+        theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), plot.margin = unit(rep(-1,4), "cm")) +
+        coord_polar(start = 0) +
+        theme(legend.position = "none") +
+        geom_text(data=label_data, aes(x=id, y=y2021+10, label=district, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
+p
+dev.off()
+
+#edit dataset for plotting CAGR - NB without changing order for this plot
+plotdata$cagr2025_orig<-pop_onlytot_nocounty$cagr2025
+plotdata$cagr2025<-pop_onlytot_nocounty$cagr2025/max(pop_onlytot_nocounty$cagr2025)*100
+colnames(plotdata)<-c("id","district","y2021_orig","y2021","topten","cagr2025_orig","cagr2025")
+
+#to calc top ten cagr without disturbing ordering of this data table
+temp<-copy(pop_onlytot_nocounty)
+temp<-temp[order(-cagr2025)] #first reorder temp DT in order of CAGR
+temp<-temp[,toptenCAGR2025:=factor(c(rep(0,10),rep(1,nrow(pop_onlytot_nocounty)-10)))] #create new top ten factor in the correct order
+temp<-temp[order(-y2021)] #put back into original order
+
+#write to plot data
+plotdata$toptenCAGR<-temp$toptenCAGR2025
+rm(temp)
+
+#add new CAGR labels to the label data
+label_data$district<-as.factor(paste(as.character(plotdata$district)," (",round(plotdata$cagr2025_orig*100,1),"%)",sep=""))
+
+#print to tiff file
+tiff('District_CAGR2025.tiff', units="in", width=5, height=5, res=100, compression = 'lzw')
+p = ggplot(plotdata, aes(x=as.factor(id), y=cagr2025, fill = toptenCAGR)) +                                         geom_bar(stat="identity") + ylim(-100,200) + 
+        theme_minimal() +
+        theme(axis.text = element_blank(), axis.title = element_blank(), panel.grid = element_blank(), plot.margin = unit(rep(-1,4), "cm")) +
+        coord_polar(start = 0) +
+        theme(legend.position = "none") +
+        geom_text(data=label_data, aes(x=id, y=cagr2025+10, label=district, hjust=hjust), color="black", fontface="bold",alpha=0.6, size=2.5, angle= label_data$angle, inherit.aes = FALSE ) 
+p
+dev.off()
+
+```
+
+
+
+
