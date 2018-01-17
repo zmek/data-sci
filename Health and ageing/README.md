@@ -4,7 +4,7 @@ author: "Zella King"
 date: "1/9/2018"
 ---
 
-##Aims of this analysis 
+## Aims of this analysis 
 
 This analysis focuses on how the population of older people, and their care needs, are expected to change over the 18 years. Britain has an ageing population, with higher levels of disease and longer periods of dependence towards end of life. It has been estimated that by 2025 there will be an additional 353K older people with substantial care needs.  
 
@@ -14,7 +14,7 @@ This is an exploratory report, testing a data methodology, so it focuses on the 
 
 The data shown here could also be combined with other publicly available data such as on the wealth or education level of each district, immigration levels, or workforce data. 
 
-##About the data used in this analysis
+## About the data used in this analysis
 
 The data used in this analysis are taken from the Projecting Older People Population Information System (POPPI) database. Originally developed for the Department of Health, this provides population data by age band, gender, ethnic group, and tenure, for English local authorities.
 
@@ -26,7 +26,7 @@ Anyone with an academic affiliation can access the POPPI data.
 
 More information on POPPI can be found at: http://www.poppi.org.uk/
 
-##How the data were accessed
+## How the data were accessed
 
 Data were downloaded for the South East of England, and all the authorities within that region, by district. For each district, the following data were accessed:
 
@@ -42,7 +42,7 @@ To achieve this, multiple downloads from POPPI were conducted at different level
 
 Separate programmes have been written to process the whole population data and the illness-specific data. To use these programmes, you first need to download the relevant files from POPPI into a single folder for each (one folder containing downloads for population, one for illness) and edit the programmes to look for the files in the correct directory. 
 
-##About the R programming files
+## About the R programming files
 
  
 
