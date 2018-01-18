@@ -14,7 +14,7 @@ library(tidyverse)
 
 
 
-##plot overall growth in over 65 pop in the South East
+### --- plot overall growth in over 65 pop in the South East ---  ###
 a<-pop[ categ_total == 1 & district=="South East"]
 a<-a[,y2017:y2035]
 names(a)<-(gsub("y", "", names(a))) #remove y from col names to make plot easier
@@ -30,7 +30,7 @@ p<-ggplot(data=b, aes(x=year, y=pop)) +
 p
 dev.off()
 
-##plot growth in over 65 pop in the South East divided into age categories
+### --- plot growth in over 65 pop in the South East divided into age categories --- ###
 c<-data.frame(poplong_notot)
 c$pop<-c$pop/1000
 

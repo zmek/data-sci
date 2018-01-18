@@ -86,6 +86,15 @@ health_onlytot<-health_onlytot[,y2017:county_level]
 #take subset without totals or county level data
 health_onlytot_nocounty<-copy(health_onlytot)
 health_onlytot_nocounty<-health_onlytot_nocounty[ county_level==0]
+health_onlytot_nocounty<-health_onlytot_nocounty[, county_level:=NULL] #remove columns that are no longer needed
+
+#make a version where the 'limited' category is collapsed
+health_onlytot_nocounty_nolimited<-copy(health_onlytot_nocounty)
+health_onlytot_nocounty_nolimited<-health_onlytot_nocounty_nolimited[, y2017:Limited]
+health_onlytot_nocounty_nolimited<-health_onlytot_nocounty_nolimited[ ,.(y2017 = sum(y2017),y2018 = sum(y2018),y2019 = sum(y2019),
+        y2020 = sum(y2020),y2021 = sum(y2021),y2025 = sum(y2025),y2035 = sum(y2035)), by = .(district)]
+health_onlytot_nocounty_nolimited$cagr2035<-(health_onlytot_nocounty_nolimited$y2035/health_onlytot_nocounty_nolimited$y2017)^(1/18)-1
+health_onlytot_nocounty_nolimited$cagr2025<-(health_onlytot_nocounty_nolimited$y2025/health_onlytot_nocounty_nolimited$y2017)^(1/8)-1
 
 #make long thin dataset - note this includes county level and a summary for the South East
 healthlong<-melt(health, id.vars = c("district","age","Limited","county_level", "categ_total"), measure.vars = c("y2017","y2018","y2019","y2020","y2021","y2025","y2030","y2035"))

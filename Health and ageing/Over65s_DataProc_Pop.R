@@ -85,6 +85,7 @@ pop_onlytot<-pop_onlytot[,y2017:county_level]
 #take subset without totals or county level data
 pop_onlytot_nocounty<-copy(pop_onlytot)
 pop_onlytot_nocounty<-pop_onlytot_nocounty[ county_level==0]
+pop_onlytot_nocounty<-pop_onlytot_nocounty[, county_level:=NULL] #remove columns that are no longer needed
 
 #make long thin dataset - note this includes county level and a summary for the South East
 poplong<-melt(pop, id.vars = c("district","age","county_level", "categ_total"), measure.vars = c("y2017","y2018","y2019","y2020","y2021","y2025","y2030","y2035"))
