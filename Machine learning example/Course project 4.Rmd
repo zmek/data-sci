@@ -1,0 +1,163 @@
+---
+title: "Practical Machine Learning coursework"
+author: "Zella King"
+date: "3/21/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE, message = FALSE}
+library(caret)
+library(randomForest)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect data that quantifies how much of a particular activity has been done. However, the quality or way of how well a particular activity was performed is rarely evaluated.
+
+In this project, we will use data from accelerometer sensors mounted on the belt, forearm, arm, and dumbbell of 6 participants who were performing one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl to predict which of five different methods they were using:
+
+Class A - exactly according to the specification,
+Class B - throwing the elbows to the front,
+Class C - lifting the dumbbell only halfway,
+Class D - lowering the dumbbell only halfway,
+Class E - throwing the hips to the front.
+
+The data are provided by:
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H.: Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13). Stuttgart, Germany: ACM SIGCHI, 2013 (http://groupware.les.inf.puc-rio.br/work.jsf?p1=11201).
+
+# Exploring the data
+
+The data is already divided into a training and a testing dataset. Inspecting these datasets reveals that the first seven columns (X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window) are not relevant to the manner in which the activity was conducted, so these are removed. 
+
+```{r load data, include=FALSE}
+training<-read.csv("pml-training.csv")
+training[,c(1:7)]<-NULL
+        
+testing<-read.csv("pml-testing.csv")
+testing[,c(1:7)]<-NULL
+```
+
+
+Many variables have a lot of "NAs". As noted by Tom Ritch in the Coursera discussion forums, the dataset includes summary statistics calculated at a measurement boundary. These correspond with variable names prefixed with "kurtosis_", "skewness_", "max_", "min_", "amplitude_", "var_", "avg_", and "stddev_", and are very sparse and/or contain very high proportions of missing values and/or "#DIV/0!" error values.
+
+Rather than impute for missing and error values, these summary statistics were removed in favor of using only raw sensor data. 
+
+```{r remove columns}
+
+colnames<-colnames(training)
+exclude_names<-c("kurtosis_", "skewness_", "max_", "min_", "amplitude_", "var_", "avg_", "stddev_")
+exclude_function<-function(x) {
+        name<-(unlist(strsplit(x,"_")[1]))[1]
+        y<-1
+        if(length(grep(name,exclude_names)) == 0) { 
+                y = 0}
+        return(y)
+}
+exclude<-sapply(colnames,exclude_function, simplify = T)
+
+#apply the exclusions to each dataset
+training_small<-training[, exclude == 0]
+testing_small<-testing[, exclude == 0]
+
+```
+
+#Fitting various models
+
+In this section we try various model fitting approaches to see which works best. 
+
+###Cross-validation
+
+For cross-validation purposes, we split the training data into two, with 75% of the observations used to train the model, and 25% used to assess the in-sample error rate. 
+
+```{r split data, include=FALSE}
+inTrain <- createDataPartition(y=training_small$classe, 
+                              p=0.75, list=FALSE)
+training_split <- training_small[inTrain,]
+testing_split <- training_small[-inTrain,]
+```
+
+###Decision tree
+
+We first try fitting a decision tree. The idea of decision trees is to start with one group, find the split that best separates the outcomes, divide the data into two groups (leaves) based on that split, and continue until groups are two small or sufficiently pure. 
+
+```{r fit tree, cache=TRUE}
+#fit decision with trees model
+set.seed(12345)
+fit_tree <- train(classe ~ .,method="rpart",data=training_split)
+
+#plot output
+plot(fit_tree$finalModel, uniform=TRUE, main="Classification Tree")
+text(fit_tree$finalModel, use.n=TRUE, all=TRUE, cex=.8)
+
+#predicted values
+predict_tree<-predict(fit_tree,newdata=testing_split)
+result_tree<-confusionMatrix(predict_tree,testing_split$classe)$overall
+
+```
+
+The table above shows the confusion matrix. The results seems poor - the overall accuracy is only `r result_tree[1]*100`% 
+
+
+###Random forest
+
+Next we try random forest. This involves taking a subset of the data to create a large number of different trees, then running new data through every resulting tree to get a prediction (or classification), and taking an average of the results to make the final prediction.
+
+
+```{r fit_rf, cache=TRUE}
+
+fit_rf <- randomForest(classe ~ .,data=training_split)
+
+predict_rf<-predict(fit_rf,newdata=testing_split)
+result_rf<-confusionMatrix(predict_rf,testing_split$classe)$overall
+
+table(predict_rf,testing_split$classe)
+
+```
+
+The table above shows the confusion matrix. The results seem very good - the overall accuracy is `r result_rf[1]*100`%
+
+
+###Boosting
+
+Finally, we try with boosting. The idea of boosting is to take weak predictors and combine them together, with weights to make a stronger predictor. The weights are dervied from classification errors. If a point is misclassified at one step, that point has a bigger influencer over the next classifier. GBM does boosting with decision trees. 
+
+
+```{r fit_gbm, cache=TRUE}
+fit_gbm <- train(classe ~ ., method="gbm",data=training_split,verbose=FALSE) 
+predict_gbm<-predict(fit_gbm,newdata=testing_split)
+result_gbm<-confusionMatrix(predict_gbm,testing_split$classe)$overall
+
+table(predict_gbm,testing_split$classe)
+
+```
+
+Again, the results seem  good - the overall accuracy is `r result_gbm[1]*100`%
+
+#Applying the model to the test data
+
+In the training set, the outcome of the classification problem is given by the variable classe, a factor with five levels A to E. The outcome variable is not included in the test dataset where it is replaced by a variable problem_id for identification purposes of the 20 test cases for the submission of the prediction results.
+
+Here we try our two successful models on these 20 cases. 
+
+
+```{r test, include=FALSE}
+
+test_gbm<-predict(fit_gbm, newdata = testing_small)
+test_rf<-predict(fit_rf, newdata = testing_small)
+
+same_prediction<-test_gbm==test_rf
+
+```
+
+The models agree in `r sum(same_prediction)` of the 20 cases. We print the predictions below. 
+
+
+```{r output}
+
+test_rf
+
+```
+
